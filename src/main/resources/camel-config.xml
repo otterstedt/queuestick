@@ -1,0 +1,60 @@
+<!-- this is a spring XML file where we have Camel embedded -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/spring"
+       xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+
+	<!-- Here we define Camel, notice the namespace it uses -->
+  <camelContext id="cc" xmlns="http://camel.apache.org/schema/spring">
+
+ 	  <route>
+	  	<from uri="jetty:http://0.0.0.0:7777/queuestick/command"/>
+	  	<camel:process ref="httpEventProcessor"/>
+	  	<wireTap uri="tdtoolmq:queue:queuestick"/>
+	  </route> 
+	  
+	  <!-- Convert text input to tellstick command -->
+ 	  <route>
+	  	<from uri="tdtoolmq:queue:queuestick"/>
+	  	<camel:bean ref="tellstickEventTransformer" method="transform"/>
+	  	<!--  <wireTap uri="direct:queue:tdtoolmodel"/>-->
+	  	<to uri="direct:queue:tdtoolmodel"/> 
+	  </route> 
+
+	  <!--  Convert CommandModel to shell command -->
+ 	  <route>
+	  	<from uri="direct:queue:tdtoolmodel"/>
+	  	<camel:bean ref="tellstickCommandTransformer" method="transform"/>
+	  	<to uri="direct:queue:tdtool"/>
+	  </route>
+	  
+	  <!-- Command ready to execute -->
+	  <route>
+	  	<from uri="direct:queue:tdtool"/>
+	  	<camel:log message="queuestick command '${body}'"/>
+	  	<camel:bean ref="tdtoolExec" method="execute"/>
+	  </route> 
+
+
+  </camelContext>
+
+	<!-- create a Camel ActiveMQ component to use, using the Spring bean style -->
+	<!-- we use the vm protocol to communicate intra-jvm which is much faster than tcp -->
+	<bean id="tdtoolmq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<!-- vm://myBroker is the vm protocol, and myBroker is the broker name -->
+		<property name="brokerURL" value="vm://tdtoolBroker?create=false&amp;waitForStart=5000"/>
+	</bean>
+	
+	<bean id="tdtoolExec" class="slk.otto.queuestick.transformer.TdtoolExecutor"/>
+	
+	<bean id="tellstickCommandTransformer" class="slk.otto.queuestick.transformer.TellstickCommandTransformer"/>
+	
+	<bean id="tellstickEventTransformer" class="slk.otto.queuestick.transformer.TellstickEventTransformer"/>
+	
+	<bean id="httpEventProcessor" class="slk.otto.queuestick.transformer.HttpEventProcessor"/>
+	
+	
+</beans>
